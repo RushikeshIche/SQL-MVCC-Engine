@@ -6,7 +6,17 @@ __pycache__/
 # C extensions
 *.so
 
-data/
+# Ignore entire data folder
+# Database files
+data/*.pkl
+data/*.json
+data/*.backup
+
+# But keep the directory structure
+!data/README.md
+data/backups/
+data/exports/
+
 
 # Distribution / packaging
 .Python

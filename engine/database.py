@@ -70,3 +70,15 @@ class Database:
     def get_transaction_status(self, txn_id: int) -> Dict[str, Any]:
         """Get transaction status"""
         return self.mvcc.get_transaction_status(txn_id)
+    def get_table_info(self):
+        """Get information about all tables for API"""
+        tables = []
+        for table_name in self.storage.get_table_names():
+            table_info = self.storage.tables[table_name]
+            tables.append({
+                'name': table_name,
+                'columns': table_info['columns'],
+                'record_count': len(table_info['records']),
+                'created_at': table_info['created_at']
+            })
+        return tables

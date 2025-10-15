@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* Oracle SQL Developer like styling */
+.legacy-panel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.legacy-button {
+  background-color: #2563eb;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid #1d4ed8;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.legacy-button:hover {
+  background-color: #1d4ed8;
+}
+
+.legacy-button:active {
+  background-color: #1e40af;
+}
+
+.legacy-button-secondary {
+  background-color: #f3f4f6;
+  color: #374151;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.legacy-button-secondary:hover {
+  background-color: #e5e7eb;
+}
+
+.legacy-button-secondary:active {
+  background-color: #d1d5db;
+}
+
+.code-editor {
+  font-family: 'Monaco', 'Consolas', 'monospace';
+  font-size: 13px;
+}
+
+/* Scrollbar styling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background-color: #f3f4f6;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #9ca3af;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280;
+}
+
+/* Custom theme colors */
+.bg-oracle-dark {
+  background-color: #0f172a;
+}
+
+.bg-oracle-light {
+  background-color: #f8fafc;
+}
+
+.text-oracle-blue {
+  color: #1e40af;
+}
+
+.border-oracle-border {
+  border-color: #cbd5e1;
+}

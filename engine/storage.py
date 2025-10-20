@@ -62,7 +62,7 @@ class StorageEngine:
             'records': {},
             'created_at': datetime.now().isoformat()
         }
-        self.next_ids[table_name] = 1
+        self.next_ids[table_name] = 0
         self._save_data()
     
     def get_table_names(self) -> List[str]:
@@ -70,23 +70,40 @@ class StorageEngine:
         return list(self.tables.keys())
     
     def get_next_id(self, table_name: str) -> int:
-        """Get next available ID for a table"""
-        if table_name not in self.next_ids:
-            self.next_ids[table_name] = 1
-        else:
-            self.next_ids[table_name] += 1
+        # ensure counter exists
+        self.next_ids.setdefault(table_name, 0)
+        self.next_ids[table_name] += 1
+        print(f"[DEBUG] get_next_id -> table: {table_name}, new_id: {self.next_ids[table_name]}", flush=True)
+        self._save_data()
         return self.next_ids[table_name]
+
     
+    # def insert_record(self, table_name: str, record: Dict[str, Any]):
+    #     """Insert a record into a table"""
+    #     if not self.table_exists(table_name):
+    #         raise ValueError(f"Table {table_name} does not exist")
+        
+    #     record_id = record.get('id', self.get_next_id(table_name))
+    #     record['id'] = record_id
+        
+    #     self.tables[table_name]['records'][record_id] = record.copy()
+    #     self._save_data()
+
     def insert_record(self, table_name: str, record: Dict[str, Any]):
-        """Insert a record into a table"""
+        
         if not self.table_exists(table_name):
             raise ValueError(f"Table {table_name} does not exist")
-        
-        record_id = record.get('id', self.get_next_id(table_name))
+
+        # Use explicit None check so we don't treat 0 or '' as missing id
+        record_id = record.get('id', None)
+        if record_id is None:
+            record_id = self.get_next_id(table_name)
         record['id'] = record_id
-        
+
         self.tables[table_name]['records'][record_id] = record.copy()
         self._save_data()
+
+
     
     def get_all_records(self, table_name: str) -> List[Dict[str, Any]]:
         """Get all records from a table"""
@@ -114,6 +131,7 @@ class StorageEngine:
         if record_id in self.tables[table_name]['records']:
             del self.tables[table_name]['records'][record_id]
             self._save_data()
+
     def drop_table(self, table_name: str):
         """Drop a table and all its data"""
         if not self.table_exists(table_name):
@@ -126,3 +144,4 @@ class StorageEngine:
         
         self._save_data()
         return True
+

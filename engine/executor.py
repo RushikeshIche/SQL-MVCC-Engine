@@ -137,11 +137,9 @@ class QueryExecutor:
             new_record = record.copy()
             for key, value in set_data.items():
                 new_record[key] = value
-            
-            # Update MVCC metadata
-            new_record['_mvcc_created_txn'] = txn_id or 0
-            new_record['_mvcc_created_ts'] = datetime.now().isoformat()
-            
+
+            new_record.pop('id', None)
+
             self.storage.insert_record(table_name, new_record)
             updated_count += 1
         

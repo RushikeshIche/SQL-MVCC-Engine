@@ -24,7 +24,7 @@ def check_dependencies():
     for package, import_name in required_packages.items():
         try:
             importlib.import_module(import_name)
-            print(f"✅ {package}")
+            print(f"✔️ {package}")
         except ImportError:
             missing_packages.append(package)
             print(f"❌ {package}")
@@ -40,7 +40,7 @@ def install_packages(packages):
     
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
-        print("✅ All packages installed successfully!")
+        print("✔️ All packages installed successfully!")
         return True
     except subprocess.CalledProcessError:
         print("❌ Failed to install packages. Please install manually:")
@@ -53,7 +53,7 @@ def create_directories():
     
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
-        print(f"✅ Created directory: {directory}")
+        print(f"✔️ Created directory: {directory}")
 
 def setup_environment():
     """Setup the environment"""

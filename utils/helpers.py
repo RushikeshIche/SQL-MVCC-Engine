@@ -47,6 +47,6 @@ def format_query_result(result: dict) -> str:
     affected_rows = result.get('affected_rows', 0)
     
     if affected_rows > 0:
-        return f"✅ {message} ({affected_rows} row(s) affected)"
+        return f"✔️ {message} ({affected_rows} row(s) affected)"
     else:
-        return f"✅ {message}"
+        return f"✔️ {message}"

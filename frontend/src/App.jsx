@@ -12,6 +12,7 @@ function App() {
   const [queryResult, setQueryResult] = useState(null);
   const [tables, setTables] = useState([]);
   const [activeTransaction, setActiveTransaction] = useState(null);
+  const [queryHistory, setQueryHistory] = useState([]);
 
   useEffect(() => {
     fetchTables();
@@ -27,8 +28,17 @@ function App() {
     }
   };
 
-  const handleQueryResult = (result) => {
+  const handleQueryResult = (query, result) => {
     setQueryResult(result);
+    setQueryHistory(prevHistory => [
+      {
+        id: prevHistory.length + 1,
+        query,
+        ...result,
+        timestamp: new Date().toISOString(),
+      },
+      ...prevHistory
+    ]);
     if (result.success) {
       fetchTables();
     }
@@ -77,8 +87,7 @@ function App() {
             <div className="flex">
               {[
                 { id: 'editor', label: 'Query Editor', icon: BarChart3 },
-                { id: 'history', label: 'History', icon: History },
-                { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+                { id: 'history', label: 'History & Analytics', icon: History },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -104,12 +113,20 @@ function App() {
                 activeTransaction={activeTransaction}
               />
             )}
-            {activeTab === 'history' && <QueryHistory />}
-            {activeTab === 'analytics' && <AnalyticsPanel />}
+            {activeTab === 'history' && (
+              <div className="flex h-full">
+                <div className="w-1/2 border-r border-slate-300">
+                  <QueryHistory history={queryHistory} />
+                </div>
+                <div className="w-1/2">
+                  <AnalyticsPanel history={queryHistory} />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Results Panel */}
-          {queryResult && (
+          {queryResult && activeTab === 'editor' && (
             <div className="border-t border-slate-300 bg-white">
               <ResultTable result={queryResult} />
             </div>

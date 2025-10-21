@@ -41,9 +41,9 @@ const QueryEditor = ({ onQueryResult, activeTransaction }) => {
       });
 
       const result = await response.json();
-      onQueryResult(result);
+      onQueryResult(query.trim(), result);
     } catch (error) {
-      onQueryResult({
+      onQueryResult(query.trim(), {
         success: false,
         error: `Network error: ${error.message}`,
         data: [],

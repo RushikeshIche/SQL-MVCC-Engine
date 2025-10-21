@@ -55,8 +55,31 @@ class SQLParser:
         try:
             if query_type == QueryType.CREATE:
                 table_name, columns_str = match.groups()
-                columns = [col.strip().split()[0] for col in columns_str.split(',')]
-                return {**base_result, 'table_name': table_name, 'columns': columns}
+                
+                primary_key = None
+                pk_match = re.search(r'PRIMARY KEY\s*\((.*?)\)', columns_str, re.IGNORECASE)
+                if pk_match:
+                    primary_key = pk_match.group(1).strip()
+                    columns_str = columns_str[:pk_match.start()] + columns_str[pk_match.end():]
+
+                columns = []
+                column_defs = [c.strip() for c in columns_str.split(',') if c.strip()]
+
+                for col_def in column_defs:
+                    if 'PRIMARY KEY' in col_def.upper():
+                        if primary_key:
+                            raise ValueError("Multiple primary keys defined.")
+                        parts = col_def.split()
+                        column_name = parts[0]
+                        primary_key = column_name
+                        columns.append(column_name)
+                    else:
+                        columns.append(col_def.split()[0])
+
+                # Filter out empty strings that might result from splitting
+                columns = [c for c in columns if c]
+
+                return {**base_result, 'table_name': table_name, 'columns': columns, 'primary_key': primary_key}
             elif query_type == QueryType.DROP:
                 table_name = match.groups()[0]
                 return {**base_result, 'table_name': table_name}

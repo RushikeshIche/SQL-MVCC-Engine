@@ -51,8 +51,9 @@ class QueryExecutor:
         """Execute CREATE TABLE query"""
         table_name = parsed_query['table_name']
         columns = parsed_query['columns']
+        primary_key = parsed_query.get('primary_key')
         
-        self.storage.create_table(table_name, columns)
+        self.storage.create_table(table_name, columns, primary_key)
         return {'message': f'Table {table_name} created successfully'}
     def _execute_drop(self, parsed_query: Dict[str, Any]) -> Dict[str, Any]:
         """Execute DROP TABLE query"""

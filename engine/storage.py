@@ -52,13 +52,14 @@ class StorageEngine:
         """Check if table exists"""
         return table_name in self.tables
     
-    def create_table(self, table_name: str, columns: List[str]):
+    def create_table(self, table_name: str, columns: List[str], primary_key: str = None):
         """Create a new table"""
         if self.table_exists(table_name):
             raise ValueError(f"Table {table_name} already exists")
         
         self.tables[table_name] = {
             'columns': columns,
+            'primary_key': primary_key,
             'records': {},
             'created_at': datetime.now().isoformat()
         }
@@ -94,6 +95,15 @@ class StorageEngine:
         if not self.table_exists(table_name):
             raise ValueError(f"Table {table_name} does not exist")
 
+        table_info = self.tables[table_name]
+        primary_key = table_info.get('primary_key')
+
+        if primary_key and primary_key in record:
+            pk_value = record[primary_key]
+            for existing_record in table_info['records'].values():
+                if existing_record.get(primary_key) == pk_value:
+                    raise ValueError(f"Primary key constraint violation: value '{pk_value}' already exists for column '{primary_key}'")
+
         # Use explicit None check so we don't treat 0 or '' as missing id
         record_id = record.get('id', None)
         if record_id is None:
@@ -120,6 +130,14 @@ class StorageEngine:
         if record_id not in self.tables[table_name]['records']:
             raise ValueError(f"Record {record_id} not found in table {table_name}")
         
+        table_info = self.tables[table_name]
+        primary_key = table_info.get('primary_key')
+        if primary_key and primary_key in record:
+            pk_value = record[primary_key]
+            for rid, existing_record in table_info['records'].items():
+                if rid != record_id and existing_record.get(primary_key) == pk_value:
+                    raise ValueError(f"Primary key constraint violation: value '{pk_value}' already exists for column '{primary_key}'")
+
         self.tables[table_name]['records'][record_id] = record.copy()
         self._save_data()
     

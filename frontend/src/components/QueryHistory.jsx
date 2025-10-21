@@ -1,40 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Clock, CheckCircle, XCircle, Copy } from 'lucide-react';
 
-const QueryHistory = () => {
-  const [history, setHistory] = useState([]);
-
-  useEffect(() => {
-    const mockHistory = [
-      {
-        id: 1,
-        query: "CREATE TABLE users (id INT, name VARCHAR, email VARCHAR, age INT)",
-        success: true,
-        timestamp: "2024-01-15T10:30:00",
-        executionTime: 0.045,
-        transactionId: null
-      },
-      {
-        id: 2,
-        query: "INSERT INTO users (id, name, email, age) VALUES (1, 'Alice', 'alice@email.com', 30)",
-        success: true,
-        timestamp: "2024-01-15T10:31:00", 
-        executionTime: 0.023,
-        transactionId: null
-      },
-      {
-        id: 3,
-        query: "SELECT * FROM non_existent_table",
-        success: false,
-        timestamp: "2024-01-15T10:32:00",
-        executionTime: 0.015,
-        transactionId: null,
-        error: "Table non_existent_table does not exist"
-      }
-    ];
-    setHistory(mockHistory);
-  }, []);
-
+const QueryHistory = ({ history }) => {
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
   };
@@ -52,7 +19,7 @@ const QueryHistory = () => {
         </h2>
       </div>
       
-      <div className="overflow-auto custom-scrollbar">
+      <div className="overflow-auto custom-scrollbar h-full">
         {history.map((item) => (
           <div
             key={item.id}
@@ -70,14 +37,14 @@ const QueryHistory = () => {
                 <span className="text-sm text-gray-500">
                   {formatTime(item.timestamp)}
                 </span>
-                {item.transactionId && (
+                {item.transaction_id && (
                   <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                    TXN #{item.transactionId}
+                    TXN #{item.transaction_id}
                   </span>
                 )}
               </div>
               <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <span>{item.executionTime}s</span>
+                <span>{item.execution_time.toFixed(4)}s</span>
                 <button
                   onClick={() => copyToClipboard(item.query)}
                   className="p-1 hover:bg-gray-200 rounded"

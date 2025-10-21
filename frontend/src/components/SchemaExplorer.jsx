@@ -52,9 +52,11 @@ const SchemaExplorer = ({ tables }) => {
                     <div key={index} className="flex items-center text-sm text-gray-700">
                       <div className="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
                       {column}
-                      <span className="ml-2 text-xs text-gray-500 bg-gray-200 px-1 rounded">
-                        VARCHAR
-                      </span>
+                      {column === table.primary_key && (
+                        <span className="ml-2 text-xs text-yellow-800 bg-yellow-200 px-1 rounded">
+                          PK
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

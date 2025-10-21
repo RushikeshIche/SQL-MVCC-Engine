@@ -78,6 +78,7 @@ class Database:
             tables.append({
                 'name': table_name,
                 'columns': table_info['columns'],
+                'primary_key': table_info.get('primary_key'),
                 'record_count': len(table_info['records']),
                 'created_at': table_info['created_at']
             })

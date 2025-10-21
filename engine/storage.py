@@ -100,15 +100,35 @@ class StorageEngine:
 
         if primary_key and primary_key in record:
             pk_value = record[primary_key]
+            # Ensure pk_value is of a comparable type, converting if necessary
+            try:
+                if primary_key == 'id':
+                    pk_value = int(pk_value)
+            except (ValueError, TypeError):
+                pass # Keep as string if conversion fails
+
             for existing_record in table_info['records'].values():
-                if existing_record.get(primary_key) == pk_value:
+                existing_pk_value = existing_record.get(primary_key)
+                
+                # Attempt to make types consistent for comparison
+                try:
+                    if primary_key == 'id':
+                        existing_pk_value = int(existing_pk_value)
+                except (ValueError, TypeError):
+                    pass
+
+                if existing_pk_value == pk_value:
                     raise ValueError(f"Primary key constraint violation: value '{pk_value}' already exists for column '{primary_key}'")
 
-        # Use explicit None check so we don't treat 0 or '' as missing id
-        record_id = record.get('id', None)
+        # The record_id for storage is the 'id' field from the record.
+        record_id = record.get('id')
         if record_id is None:
+            # This case should ideally not be hit if executor always provides an ID.
             record_id = self.get_next_id(table_name)
-        record['id'] = record_id
+            record['id'] = record_id
+        
+        # Ensure record_id is an integer for dictionary key consistency
+        record_id = int(record_id)
 
         self.tables[table_name]['records'][record_id] = record.copy()
         self._save_data()
@@ -162,4 +182,10 @@ class StorageEngine:
         
         self._save_data()
         return True
+    
+    def record_exists(self, table_name: str, record_id: int) -> bool:
+        """Check if a record with a given ID exists."""
+        if not self.table_exists(table_name):
+            return False
+        return record_id in self.tables[table_name]['records']
 

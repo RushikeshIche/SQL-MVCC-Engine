@@ -110,8 +110,19 @@ class QueryExecutor:
         
         # Create record with MVCC metadata
         record = dict(zip(columns, values))
-        record_id = self.storage.get_next_id(table_name)
-        record['id'] = record_id
+
+        # If 'id' is not provided in the query, generate one.
+        if 'id' not in record:
+            record['id'] = self.storage.get_next_id(table_name)
+        else:
+            # If id is provided, ensure it's an integer and doesn't already exist.
+            try:
+                provided_id = int(record['id'])
+                if self.storage.record_exists(table_name, provided_id):
+                    raise ValueError(f"Primary key constraint violation: ID '{provided_id}' already exists in table '{table_name}'")
+                record['id'] = provided_id
+            except (ValueError, TypeError):
+                raise ValueError("ID must be an integer.")
         
         # Add MVCC metadata
         record['_mvcc_created_txn'] = txn_id or 0

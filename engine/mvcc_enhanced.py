@@ -180,52 +180,58 @@ class EnhancedMVCCManager:
     
     def _is_record_visible(self, record: Dict[str, Any], txn_id: int = None) -> bool:
         """Check if record is visible to transaction"""
-        if txn_id is None:
-            # Show only committed records
-            created_txn = record.get('_mvcc_created_txn', 0)
-            deleted_txn = record.get('_mvcc_deleted_txn')
-            
-            return (created_txn == 0 or (
-                created_txn in self.transactions and 
-                self.transactions[created_txn]['status'] == 'COMMITTED'
-            )) and (deleted_txn is None or (
-                deleted_txn in self.transactions and 
-                self.transactions[deleted_txn]['status'] != 'COMMITTED'
-            ))
-        
-        if txn_id not in self.transactions:
-            return False
-        
-        transaction = self.transactions[txn_id]
         created_txn = record.get('_mvcc_created_txn', 0)
         deleted_txn = record.get('_mvcc_deleted_txn')
-        
-        # Record created by this transaction
-        if created_txn == txn_id:
+
+        # Rule 1: Is the record created by the current transaction?
+        if txn_id and created_txn == txn_id:
+            # If so, it's visible unless it was also deleted by the same transaction.
             return deleted_txn != txn_id
-        
-        # Record created by committed transaction
-        if created_txn in self.transactions and self.transactions[created_txn]['status'] == 'COMMITTED':
-            # Not deleted or deleted by different transaction
-            return deleted_txn is None or deleted_txn != txn_id
-        
-        return False
+
+        # Rule 2: Has the creating transaction been committed?
+        # A record is only potentially visible if its creator has committed.
+        # created_txn == 0 is for records created before transactions were tracked.
+        creator_is_committed = (created_txn == 0) or (
+            created_txn in self.transactions and
+            self.transactions[created_txn]['status'] == 'COMMITTED'
+        )
+
+        if not creator_is_committed:
+            return False
+
+        # Rule 3: Has the record been deleted?
+        if deleted_txn is None:
+            # If not deleted, and creator is committed, it's visible.
+            return True
+
+        # Rule 4: If deleted, has the deleting transaction been committed?
+        # A record is still visible if the transaction that deleted it has NOT committed.
+        deleter_is_committed = (
+            deleted_txn in self.transactions and
+            self.transactions[deleted_txn]['status'] == 'COMMITTED'
+        )
+
+        return not deleter_is_committed
     
     def commit_transaction(self, txn_id: int) -> bool:
         """Commit a transaction"""
         with self.lock:
-            if txn_id not in self.transactions:
+            if txn_id not in self.transactions or self.transactions[txn_id]['status'] != 'ACTIVE':
                 return False
             
-            self.transactions[txn_id]['status'] = 'COMMITTED'
-            self.transactions[txn_id]['commit_time'] = datetime.now().isoformat()
+            transaction = self.transactions[txn_id]
+            transaction['status'] = 'COMMITTED'
+            transaction['commit_time'] = datetime.now().isoformat()
             
-            # Update system table
-            self.storage.update_record('mvcc_transactions', txn_id, {
-                'status': 'COMMITTED',
-                'commit_time': self.transactions[txn_id]['commit_time']
-            })
-            
+            # Update system table - fetch existing record and update it
+            existing_record = self.storage.get_record('mvcc_transactions', txn_id)
+            if existing_record:
+                existing_record.update({
+                    'status': 'COMMITTED',
+                    'commit_time': transaction['commit_time']
+                })
+                self.storage.update_record('mvcc_transactions', txn_id, existing_record)
+
             # Clean up snapshot
             if txn_id in self.transaction_snapshots:
                 del self.transaction_snapshots[txn_id]
@@ -235,15 +241,16 @@ class EnhancedMVCCManager:
     def rollback_transaction(self, txn_id: int) -> bool:
         """Rollback a transaction"""
         with self.lock:
-            if txn_id not in self.transactions:
+            if txn_id not in self.transactions or self.transactions[txn_id]['status'] != 'ACTIVE':
                 return False
             
             self.transactions[txn_id]['status'] = 'ROLLED_BACK'
             
             # Update system table
-            self.storage.update_record('mvcc_transactions', txn_id, {
-                'status': 'ROLLED_BACK'
-            })
+            existing_record = self.storage.get_record('mvcc_transactions', txn_id)
+            if existing_record:
+                existing_record.update({'status': 'ROLLED_BACK'})
+                self.storage.update_record('mvcc_transactions', txn_id, existing_record)
             
             # Remove records created by this transaction
             self._remove_transaction_records(txn_id)

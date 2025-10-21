@@ -135,6 +135,12 @@ class StorageEngine:
 
 
     
+    def get_record(self, table_name: str, record_id: int) -> Dict[str, Any]:
+        """Get a single record by its ID."""
+        if not self.table_exists(table_name):
+            return None
+        return self.tables[table_name]['records'].get(record_id)
+
     def get_all_records(self, table_name: str) -> List[Dict[str, Any]]:
         """Get all records from a table"""
         if not self.table_exists(table_name):
@@ -142,23 +148,28 @@ class StorageEngine:
         
         return list(self.tables[table_name]['records'].values())
     
-    def update_record(self, table_name: str, record_id: int, record: Dict[str, Any]):
-        """Update a record in a table"""
+    def update_record(self, table_name: str, record_id: int, updates: Dict[str, Any]):
+        """Update a record in a table by merging updates."""
         if not self.table_exists(table_name):
             raise ValueError(f"Table {table_name} does not exist")
         
-        if record_id not in self.tables[table_name]['records']:
+        records = self.tables[table_name]['records']
+        if record_id not in records:
             raise ValueError(f"Record {record_id} not found in table {table_name}")
         
-        table_info = self.tables[table_name]
-        primary_key = table_info.get('primary_key')
-        if primary_key and primary_key in record:
-            pk_value = record[primary_key]
-            for rid, existing_record in table_info['records'].items():
-                if rid != record_id and existing_record.get(primary_key) == pk_value:
+        # Merge the updates into the existing record
+        existing_record = records[record_id]
+        existing_record.update(updates)
+
+        # Primary key constraint check
+        primary_key = self.tables[table_name].get('primary_key')
+        if primary_key and primary_key in updates:
+            pk_value = updates[primary_key]
+            for rid, record in records.items():
+                if rid != record_id and record.get(primary_key) == pk_value:
                     raise ValueError(f"Primary key constraint violation: value '{pk_value}' already exists for column '{primary_key}'")
 
-        self.tables[table_name]['records'][record_id] = record.copy()
+        records[record_id] = existing_record.copy() # Ensure a new copy is stored
         self._save_data()
     
     def delete_record(self, table_name: str, record_id: int):

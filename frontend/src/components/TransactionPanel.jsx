@@ -24,9 +24,10 @@ const TransactionPanel = ({ onTransactionUpdate, activeTransaction }) => {
       });
 
       const result = await response.json();
+      // Mark new transaction as active on the frontend
       onTransactionUpdate({
         id: result.transaction_id,
-        status: result.status,
+        status: 'active',
         isolationLevel: isolationLevel
       });
     } catch (error) {
@@ -44,7 +45,8 @@ const TransactionPanel = ({ onTransactionUpdate, activeTransaction }) => {
 
       const result = await response.json();
       if (result.success) {
-               onTransactionUpdate(null);
+        // Signal that the active transaction has ended (committed)
+        onTransactionUpdate({ id: activeTransaction.id, status: 'ended' });
 
       }
     } catch (error) {
@@ -62,7 +64,8 @@ const TransactionPanel = ({ onTransactionUpdate, activeTransaction }) => {
 
       const result = await response.json();
       if (result.success) {
-                onTransactionUpdate(null);
+        // Signal that the active transaction has been aborted (rolled back)
+        onTransactionUpdate({ id: activeTransaction.id, status: 'aborted' });
 
       }
     } catch (error) {

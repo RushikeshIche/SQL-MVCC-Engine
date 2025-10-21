@@ -49,52 +49,94 @@ function App() {
   const handleTransactionUpdate = (transaction) => {
     // Record transaction lifecycle events (start / end) for the Transactions tab
     const now = new Date().toISOString();
+    // transaction may be:
+    // - null -> no active transaction
+    // - { id, status: 'active'|'ended'|'aborted', isolationLevel? }
 
-    // If a transaction object arrives and there was no active transaction -> started
+    if (!transaction) {
+      // Clearing active transaction on backend-side null; mark previous as ended
+      if (activeTransaction) {
+        const prevId = activeTransaction.id;
+        setTransactions(prev => prev.map(t => t.id === prevId ? ({
+          ...t,
+          end: now,
+          status: 'ended',
+          duration: t.start ? ((new Date(now) - new Date(t.start)) / 1000) : undefined,
+        }) : t));
+      }
+      setActiveTransaction(null);
+      return;
+    }
+
+    // If update contains status only for an existing active transaction
+    if (transaction && transaction.status && activeTransaction && transaction.id === activeTransaction.id) {
+      const status = transaction.status;
+      if (status === 'ended') {
+        setTransactions(prev => prev.map(t => t.id === transaction.id ? ({
+          ...t,
+          end: now,
+          status: 'ended',
+          duration: t.start ? ((new Date(now) - new Date(t.start)) / 1000) : undefined,
+        }) : t));
+        setActiveTransaction(null);
+        return;
+      }
+      if (status === 'aborted') {
+        setTransactions(prev => prev.map(t => t.id === transaction.id ? ({
+          ...t,
+          end: now,
+          status: 'aborted',
+          duration: t.start ? ((new Date(now) - new Date(t.start)) / 1000) : undefined,
+        }) : t));
+        setActiveTransaction(null);
+        return;
+      }
+      // If status is 'active' just ensure we have it recorded
+    }
+
+    // If a transaction object arrives and there was no active transaction -> record start
     if (transaction && !activeTransaction) {
       setTransactions(prev => [
         {
           id: transaction.id,
           start: now,
           end: null,
-          status: transaction.status || 'started',
+          status: transaction.status || 'active',
           isolationLevel: transaction.isolationLevel || null,
         },
         ...prev,
       ]);
+      setActiveTransaction(transaction);
+      return;
     }
 
-    // If null arrives and we previously had an active transaction -> ended
-    if (!transaction && activeTransaction) {
-      setTransactions(prev => prev.map(t => t.id === activeTransaction.id ? ({
+    // If a new transaction arrives while another is active (rare) treat as new start and close previous
+    if (transaction && activeTransaction && transaction.id !== activeTransaction.id) {
+      // Mark previous as ended
+      const prevId = activeTransaction.id;
+      setTransactions(prev => prev.map(t => t.id === prevId ? ({
         ...t,
         end: now,
         status: 'ended',
         duration: t.start ? ((new Date(now) - new Date(t.start)) / 1000) : undefined,
       }) : t));
-    }
 
-    // If a new transaction arrives while another is active (rare) treat as new start
-    if (transaction && activeTransaction && transaction.id !== activeTransaction.id) {
+      // Add new
       setTransactions(prev => [
         {
           id: transaction.id,
           start: now,
           end: null,
-          status: transaction.status || 'started',
+          status: transaction.status || 'active',
           isolationLevel: transaction.isolationLevel || null,
         },
         ...prev,
       ]);
-      // Also mark the previous as ended
-      setTransactions(prev => prev.map(t => t.id === activeTransaction.id ? ({
-        ...t,
-        end: now,
-        status: 'ended',
-        duration: t.start ? ((new Date(now) - new Date(t.start)) / 1000) : undefined,
-      }) : t));
+      setActiveTransaction(transaction);
+      return;
     }
 
+    // Default: set activeTransaction to incoming object
     setActiveTransaction(transaction);
   };
 

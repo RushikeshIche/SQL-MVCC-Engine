@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, PlayCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle, XCircle, Slash } from 'lucide-react';
 
 const Transactions = ({ transactions }) => {
   const formatTime = (iso) => iso ? new Date(iso).toLocaleString() : '-';
@@ -34,7 +34,9 @@ const Transactions = ({ transactions }) => {
 
               <div className="text-right text-sm">
                 <div className="flex items-center justify-end space-x-2">
-                  {t.end ? (
+                  {t.status === 'aborted' ? (
+                    <XCircle className="w-4 h-4 text-red-500" />
+                  ) : t.end ? (
                     <CheckCircle className="w-4 h-4 text-green-500" />
                   ) : (
                     <PlayCircle className="w-4 h-4 text-blue-500" />

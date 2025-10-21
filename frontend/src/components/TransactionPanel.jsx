@@ -44,7 +44,8 @@ const TransactionPanel = ({ onTransactionUpdate, activeTransaction }) => {
 
       const result = await response.json();
       if (result.success) {
-        onTransactionUpdate(null);
+               onTransactionUpdate(null);
+
       }
     } catch (error) {
       console.error('Failed to commit transaction:', error);
@@ -61,7 +62,8 @@ const TransactionPanel = ({ onTransactionUpdate, activeTransaction }) => {
 
       const result = await response.json();
       if (result.success) {
-        onTransactionUpdate(null);
+                onTransactionUpdate(null);
+
       }
     } catch (error) {
       console.error('Failed to rollback transaction:', error);

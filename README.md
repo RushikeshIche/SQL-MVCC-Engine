@@ -117,11 +117,16 @@ graph TB
 - **Version Control**: Track record history with transaction visibility
 
 ### 🎨 Modern Web Interface
-- **Streamlit-based UI**: Responsive web application
-- **Query Editor**: Syntax-highlighted SQL editor with history
+- **React-based UI**: Modern, responsive web application
+- **Query Editor**: SQL editor with query execution
 - **Schema Explorer**: Visual table structure browser
 - **Performance Analytics**: Real-time query analytics and charts
-- **Concurrency Demo**: Interactive MVCC demonstration
+- **Transaction Management**: Full transaction control with isolation levels
+- **🆕 Live Transaction Tree**: Git-like visualization showing transaction branching and merging
+  - Visual tree/graph showing transaction relationships
+  - Branch out when transactions start
+  - Merge together when transactions commit
+  - Real-time updates via WebSocket
 
 ## 🚀 Quick Start
 
@@ -153,17 +158,29 @@ pip install -r requirements.txt
 
 ### Running the Application
 
-**Enhanced UI (Recommended):**
+**React Frontend with Transaction Tree (Recommended):**
+
+1. Start the backend:
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py
+```
+Backend will run at `http://localhost:8000`
+
+2. Start the frontend (in a new terminal):
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Frontend will open at `http://localhost:5173`
+
+**Legacy Streamlit UI:**
 ```bash
 streamlit run ui/enhanced_app.py
 ```
-
-**Basic Version:**
-```bash
-python main.py
-```
-
-The application will open at `http://localhost:8501`
+The Streamlit UI will open at `http://localhost:8501`
 
 ##  Basic Usage
 
@@ -229,6 +246,7 @@ flowchart TD
 
 ## 📚 Documentation Index
 
+- **[Transaction Tree Guide](./TRANSACTION_TREE_GUIDE.md)** - 🌳 Git-like visualization guide
 - **[Engine Documentation](./engine/README.md)** - Core database engine details
 - **[UI Documentation](./ui/README.md)** - User interface features and usage
 - **[Utilities Documentation](./utils/README.md)** - Helper functions and tools

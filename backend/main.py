@@ -1,9 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
+from datetime import datetime
 import sys
 import os
+import asyncio
+import json
 
 # Add the engine to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -20,8 +23,53 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-# Global database instance
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Set[WebSocket] = set()
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.add(websocket)
+        print(f"🔌 WebSocket client connected. Total: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.discard(websocket)
+        print(f"🔌 WebSocket client disconnected. Total: {len(self.active_connections)}")
+    
+    async def broadcast(self, message: dict):
+        """Broadcast message to all connected clients"""
+        disconnected = set()
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                print(f"❌ Error sending to WebSocket: {e}")
+                disconnected.add(connection)
+        
+        # Remove disconnected clients
+        for conn in disconnected:
+            self.active_connections.discard(conn)
+
+# Global instances
 db = Database("mvcc_database")
+ws_manager = ConnectionManager()
+
+# Register callback for transaction state changes
+def on_transaction_state_change(stats):
+    """Callback when transaction state changes"""
+    # Schedule broadcast in the event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(ws_manager.broadcast({
+                'type': 'transaction_stats',
+                'data': stats
+            }))
+    except Exception as e:
+        print(f"Error broadcasting state change: {e}")
+
+db.mvcc.register_state_change_callback(on_transaction_state_change)
 
 # Pydantic models
 class QueryRequest(BaseModel):
@@ -154,6 +202,76 @@ async def get_tables():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "database": "connected"}
+
+@app.get("/transaction/statistics")
+async def get_transaction_statistics():
+    """Get current transaction statistics"""
+    try:
+        stats = db.mvcc.get_transaction_statistics()
+        print(f"📊 Returning transaction statistics")
+        return stats
+    except Exception as e:
+        print(f"❌ Failed to get transaction statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/transaction/clear-history")
+async def clear_transaction_history():
+    """Clear transaction history (resets visualization, not data)"""
+    try:
+        # Reset the MVCC transaction tracking
+        db.mvcc.transactions.clear()
+        db.mvcc.transaction_snapshots.clear()
+        db.mvcc.transaction_stats = {
+            'active': 0,
+            'committed': 0,
+            'aborted': 0,
+            'total': 0
+        }
+        db.mvcc.next_txn_id = 1
+        
+        # Broadcast the reset to all connected clients
+        empty_stats = {
+            'stats': {'active': 0, 'committed': 0, 'aborted': 0, 'total': 0},
+            'active_transactions': [],
+            'committed_transactions': [],
+            'aborted_transactions': [],
+            'timestamp': datetime.now().isoformat()
+        }
+        await ws_manager.broadcast({
+            'type': 'transaction_stats',
+            'data': empty_stats
+        })
+        
+        print("🧹 Transaction history cleared")
+        return {"success": True, "message": "Transaction history cleared"}
+    except Exception as e:
+        print(f"❌ Failed to clear history: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.websocket("/ws/transactions")
+async def websocket_transactions(websocket: WebSocket):
+    """WebSocket endpoint for real-time transaction updates"""
+    await ws_manager.connect(websocket)
+    try:
+        # Send initial state
+        initial_stats = db.mvcc.get_transaction_statistics()
+        await websocket.send_json({
+            'type': 'transaction_stats',
+            'data': initial_stats
+        })
+        
+        # Keep connection alive and handle incoming messages
+        while True:
+            data = await websocket.receive_text()
+            # Echo back or handle commands if needed
+            if data == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+        print("🔌 WebSocket client disconnected normally")
+    except Exception as e:
+        print(f"❌ WebSocket error: {e}")
+        ws_manager.disconnect(websocket)
 
 if __name__ == "__main__":
     import uvicorn

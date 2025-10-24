@@ -2,7 +2,7 @@
 Enhanced MVCC Manager with better isolation level support
 """
 
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Callable, Optional
 from datetime import datetime
 import threading
 from enum import Enum
@@ -24,6 +24,15 @@ class EnhancedMVCCManager:
         self.lock = threading.RLock()
         self.version_chain = {}  # Tracks version chains for records
         
+        # Transaction state tracking for visualization
+        self.transaction_stats = {
+            'active': 0,
+            'committed': 0,
+            'aborted': 0,
+            'total': 0
+        }
+        self.state_change_callbacks = []  # Callbacks to notify on state changes
+        
         self._initialize_system_tables()
     
     def _initialize_system_tables(self):
@@ -37,6 +46,19 @@ class EnhancedMVCCManager:
             self.storage.create_table('mvcc_locks', [
                 'lock_id', 'table_name', 'record_id', 'txn_id', 'lock_type', 'acquired_at'
             ])
+    
+    def register_state_change_callback(self, callback: Callable):
+        """Register a callback to be notified when transaction states change"""
+        self.state_change_callbacks.append(callback)
+    
+    def _notify_state_change(self):
+        """Notify all registered callbacks about state change"""
+        stats = self.get_transaction_statistics()
+        for callback in self.state_change_callbacks:
+            try:
+                callback(stats)
+            except Exception as e:
+                print(f"Error in state change callback: {e}")
     
     def begin_transaction(self, isolation_level: str = "READ_COMMITTED") -> int:
         """Start a new transaction with specified isolation level"""
@@ -57,6 +79,10 @@ class EnhancedMVCCManager:
             
             self.transactions[txn_id] = transaction
             
+            # Update stats
+            self.transaction_stats['active'] += 1
+            self.transaction_stats['total'] += 1
+            
             # Create snapshot for REPEATABLE_READ and SERIALIZABLE
             if isolation_level in ["REPEATABLE_READ", "SERIALIZABLE"]:
                 self._create_snapshot(txn_id, snapshot_time)
@@ -69,6 +95,9 @@ class EnhancedMVCCManager:
                 'isolation_level': isolation_level,
                 'snapshot_time': snapshot_time.isoformat()
             })
+            
+            # Notify state change
+            self._notify_state_change()
             
             return txn_id
     
@@ -223,6 +252,10 @@ class EnhancedMVCCManager:
             transaction['status'] = 'COMMITTED'
             transaction['commit_time'] = datetime.now().isoformat()
             
+            # Update stats
+            self.transaction_stats['active'] -= 1
+            self.transaction_stats['committed'] += 1
+            
             # Update system table - fetch existing record and update it
             existing_record = self.storage.get_record('mvcc_transactions', txn_id)
             if existing_record:
@@ -236,6 +269,9 @@ class EnhancedMVCCManager:
             if txn_id in self.transaction_snapshots:
                 del self.transaction_snapshots[txn_id]
             
+            # Notify state change
+            self._notify_state_change()
+            
             return True
     
     def rollback_transaction(self, txn_id: int) -> bool:
@@ -245,6 +281,10 @@ class EnhancedMVCCManager:
                 return False
             
             self.transactions[txn_id]['status'] = 'ROLLED_BACK'
+            
+            # Update stats
+            self.transaction_stats['active'] -= 1
+            self.transaction_stats['aborted'] += 1
             
             # Update system table
             existing_record = self.storage.get_record('mvcc_transactions', txn_id)
@@ -258,6 +298,9 @@ class EnhancedMVCCManager:
             # Clean up snapshot
             if txn_id in self.transaction_snapshots:
                 del self.transaction_snapshots[txn_id]
+            
+            # Notify state change
+            self._notify_state_change()
             
             return True
     
@@ -282,6 +325,37 @@ class EnhancedMVCCManager:
         
         return txn
     
+    def get_transaction_statistics(self) -> Dict[str, Any]:
+        """Get current transaction statistics for visualization"""
+        with self.lock:
+            # Get list of all transactions with their details
+            active_txns = []
+            committed_txns = []
+            aborted_txns = []
+            
+            for txn_id, txn in self.transactions.items():
+                txn_data = {
+                    'id': txn_id,
+                    'start_time': txn['start_time'],
+                    'isolation_level': txn['isolation_level'].value if isinstance(txn['isolation_level'], IsolationLevel) else str(txn['isolation_level'])
+                }
+                
+                if txn['status'] == 'ACTIVE':
+                    active_txns.append(txn_data)
+                elif txn['status'] == 'COMMITTED':
+                    txn_data['commit_time'] = txn.get('commit_time')
+                    committed_txns.append(txn_data)
+                elif txn['status'] == 'ROLLED_BACK':
+                    aborted_txns.append(txn_data)
+            
+            return {
+                'stats': self.transaction_stats.copy(),
+                'active_transactions': active_txns,
+                'committed_transactions': committed_txns,
+                'aborted_transactions': aborted_txns,
+                'timestamp': datetime.now().isoformat()
+            }
+    
     def get_database_status(self) -> Dict[str, Any]:
         """Get overall database MVCC status"""
         active_transactions = [
@@ -293,5 +367,6 @@ class EnhancedMVCCManager:
             'total_transactions': len(self.transactions),
             'active_transactions': len(active_transactions),
             'next_transaction_id': self.next_txn_id,
-            'snapshots_count': len(self.transaction_snapshots)
+            'snapshots_count': len(self.transaction_snapshots),
+            'statistics': self.get_transaction_statistics()
         }

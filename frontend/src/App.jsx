@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, History, BarChart3, List } from 'lucide-react';
+import { Database, History, BarChart3, List, GitBranch } from 'lucide-react';
 import QueryEditor from './components/QueryEditor';
 import QueryHistory from './components/QueryHistory';
 import SchemaExplorer from './components/SchemaExplorer';
@@ -7,6 +7,7 @@ import AnalyticsPanel from './components/AnalyticsPanel';
 import TransactionPanel from './components/TransactionPanel';
 import ResultTable from './components/ResultTable';
 import Transactions from './components/Transactions';
+import TransactionTree from './components/TransactionTree';
 
 function App() {
   const [activeTab, setActiveTab] = useState('editor');
@@ -181,6 +182,7 @@ function App() {
                   {[
                     { id: 'editor', label: 'Query Editor', icon: BarChart3 },
                     { id: 'history', label: 'History & Analytics', icon: History },
+                    { id: 'tree', label: 'Transaction Tree', icon: GitBranch },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -231,6 +233,9 @@ function App() {
                   <AnalyticsPanel history={queryHistory} />
                 </div>
               </div>
+            )}
+            {activeTab === 'tree' && (
+              <TransactionTree />
             )}
             {activeTab === 'transactions' && (
               <div className="flex h-full">

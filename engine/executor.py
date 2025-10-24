@@ -73,6 +73,13 @@ class QueryExecutor:
         columns = parsed_query['columns']
         where_clause = parsed_query.get('where')
         
+        # Get table info to retrieve column names even if table is empty
+        if not self.storage.table_exists(table_name):
+            raise ValueError(f"Table {table_name} does not exist")
+        
+        table_info = self.storage.tables[table_name]
+        table_columns = table_info.get('columns', [])
+        
         # Get visible records based on MVCC
         records = self.mvcc.get_visible_records(table_name, txn_id)
         
@@ -93,7 +100,8 @@ class QueryExecutor:
                     'affected_rows': len(result_data)
                 }
             else:
-                return {'data': [], 'columns': [], 'affected_rows': 0}
+                # Return table column names even when no records exist
+                return {'data': [], 'columns': table_columns, 'affected_rows': 0}
         else:
             result_data = [{col: record.get(col) for col in columns} for record in records]
             return {
@@ -107,6 +115,13 @@ class QueryExecutor:
         table_name = parsed_query['table_name']
         columns = parsed_query['columns']
         values = parsed_query['values']
+        
+        # Get table info to check primary key
+        if not self.storage.table_exists(table_name):
+            raise ValueError(f"Table {table_name} does not exist")
+        
+        table_info = self.storage.tables[table_name]
+        primary_key = table_info.get('primary_key')
         
         # Create record with MVCC metadata
         record = dict(zip(columns, values))
@@ -129,6 +144,7 @@ class QueryExecutor:
         record['_mvcc_created_ts'] = datetime.now().isoformat()
         record['_mvcc_deleted_txn'] = None
         
+        # The storage.insert_record will check primary key uniqueness for any primary key column
         self.storage.insert_record(table_name, record)
         return {'message': 'Record inserted successfully', 'affected_rows': 1}
     
@@ -138,10 +154,42 @@ class QueryExecutor:
         set_data = parsed_query['set_data']
         where_clause = parsed_query.get('where')
         
+        # Get table info to check primary key
+        table_info = self.storage.tables[table_name]
+        primary_key = table_info.get('primary_key')
+        
         records = self.mvcc.get_visible_records(table_name, txn_id)
         
         if where_clause:
             records = self._apply_where_clause(records, where_clause)
+        
+        # Check if updating primary key would violate uniqueness constraint
+        if primary_key and primary_key in set_data:
+            new_pk_value = set_data[primary_key]
+            all_records = self.mvcc.get_visible_records(table_name, txn_id)
+            
+            for existing_record in all_records:
+                # Skip records that we're about to update
+                if existing_record in records:
+                    continue
+                    
+                existing_pk_value = existing_record.get(primary_key)
+                
+                # Compare values
+                try:
+                    if str(new_pk_value).replace('.', '').replace('-', '').isdigit():
+                        new_pk_cmp = float(new_pk_value) if '.' in str(new_pk_value) else int(new_pk_value)
+                        existing_pk_cmp = float(existing_pk_value) if '.' in str(existing_pk_value) else int(existing_pk_value)
+                        if new_pk_cmp == existing_pk_cmp:
+                            raise ValueError(f"Primary key constraint violation: {primary_key}='{new_pk_value}' already exists in table '{table_name}'")
+                    else:
+                        if str(new_pk_value) == str(existing_pk_value):
+                            raise ValueError(f"Primary key constraint violation: {primary_key}='{new_pk_value}' already exists in table '{table_name}'")
+                except (ValueError, TypeError) as e:
+                    if "Primary key constraint violation" in str(e):
+                        raise
+                    if str(new_pk_value) == str(existing_pk_value):
+                        raise ValueError(f"Primary key constraint violation: {primary_key}='{new_pk_value}' already exists in table '{table_name}'")
         
         updated_count = 0
         for record in records:

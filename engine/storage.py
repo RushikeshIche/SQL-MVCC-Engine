@@ -98,27 +98,34 @@ class StorageEngine:
         table_info = self.tables[table_name]
         primary_key = table_info.get('primary_key')
 
+        # Check primary key uniqueness for ANY primary key column
         if primary_key and primary_key in record:
             pk_value = record[primary_key]
-            # Ensure pk_value is of a comparable type, converting if necessary
-            try:
-                if primary_key == 'id':
-                    pk_value = int(pk_value)
-            except (ValueError, TypeError):
-                pass # Keep as string if conversion fails
-
+            
+            # Check against all existing records
             for existing_record in table_info['records'].values():
                 existing_pk_value = existing_record.get(primary_key)
                 
-                # Attempt to make types consistent for comparison
+                # Skip deleted records (MVCC)
+                if existing_record.get('_mvcc_deleted_txn') is not None:
+                    continue
+                
+                # Compare primary key values (handle type conversion)
                 try:
-                    if primary_key == 'id':
-                        existing_pk_value = int(existing_pk_value)
+                    # Try numeric comparison
+                    if str(pk_value).replace('.', '').replace('-', '').isdigit():
+                        pk_value_cmp = float(pk_value) if '.' in str(pk_value) else int(pk_value)
+                        existing_pk_cmp = float(existing_pk_value) if '.' in str(existing_pk_value) else int(existing_pk_value)
+                        if pk_value_cmp == existing_pk_cmp:
+                            raise ValueError(f"Primary key constraint violation: {primary_key}='{pk_value}' already exists in table '{table_name}'")
+                    else:
+                        # String comparison
+                        if str(pk_value) == str(existing_pk_value):
+                            raise ValueError(f"Primary key constraint violation: {primary_key}='{pk_value}' already exists in table '{table_name}'")
                 except (ValueError, TypeError):
-                    pass
-
-                if existing_pk_value == pk_value:
-                    raise ValueError(f"Primary key constraint violation: value '{pk_value}' already exists for column '{primary_key}'")
+                    # Fallback to string comparison
+                    if str(pk_value) == str(existing_pk_value):
+                        raise ValueError(f"Primary key constraint violation: {primary_key}='{pk_value}' already exists in table '{table_name}'")
 
         # The record_id for storage is the 'id' field from the record.
         record_id = record.get('id')

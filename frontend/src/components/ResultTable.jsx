@@ -50,7 +50,7 @@ const ResultTable = ({ result }) => {
       </div>
 
       {/* Results Table */}
-      {result.success && result.data && result.data.length > 0 && (
+      {result.success && result.columns && result.columns.length > 0 && (
         <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
@@ -63,27 +63,39 @@ const ResultTable = ({ result }) => {
               </tr>
             </thead>
             <tbody>
-              {result.data.map((row, rowIndex) => (
-                <tr key={rowIndex} className="border-b hover:bg-gray-50">
-                  {result.columns.map((column, colIndex) => (
-                    <td key={colIndex} className="p-2 text-gray-600">
-                      {String(row[column] || '')}
-                    </td>
-                  ))}
+              {result.data && result.data.length > 0 ? (
+                result.data.map((row, rowIndex) => (
+                  <tr key={rowIndex} className="border-b hover:bg-gray-50">
+                    {result.columns.map((column, colIndex) => (
+                      <td key={colIndex} className="p-2 text-gray-600">
+                        {String(row[column] || '')}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={result.columns.length} className="p-4 text-center text-gray-500">
+                    <div className="flex flex-col items-center">
+                      <Database className="w-8 h-8 mb-2 text-gray-300" />
+                      <div>No records in table</div>
+                      <div className="text-sm">Table structure is displayed above</div>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* No Results Message */}
-      {result.success && (!result.data || result.data.length === 0) && (
+      {/* No Results Message (for queries that don't return columns) */}
+      {result.success && (!result.columns || result.columns.length === 0) && (
         <div className="flex-1 flex items-center justify-center text-gray-500">
           <div className="text-center">
             <Database className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-            <div>No results returned</div>
-            <div className="text-sm">Query executed successfully but returned no data</div>
+            <div>Query executed successfully</div>
+            <div className="text-sm">No data to display</div>
           </div>
         </div>
       )}

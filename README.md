@@ -1,7 +1,14 @@
 #  SQL MVCC Engine
+## 👥 Authors
+**Rushikesh Iche** 
+- Engineered the core MVCC system from scratch
+- Built the SQL parser and query executor
+- Designed the transaction management system
 
-### 👥 Group Project by **Om Chiddarwar** & **Rushikesh Iche**
-
+**Om Chiddarwar**
+- Created the beautiful React interface
+- Implemented real-time MVCC visualizations
+- Made database internals actually look cool
 A comprehensive Database Management System with Multi-Version Concurrency Control (MVCC) implementation in Python, featuring a modern web-based UI.
 
 ## 🚀 Features

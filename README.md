@@ -1,5 +1,7 @@
 #  SQL MVCC Engine
 
+### 👥 Group Project by **Om Chiddarwar** & **Rushikesh Iche**
+
 A comprehensive Database Management System with Multi-Version Concurrency Control (MVCC) implementation in Python, featuring a modern web-based UI.
 
 ## 🚀 Features

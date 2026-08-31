@@ -128,6 +128,16 @@ class SQLParser:
                         return m.group(1).strip()
                     return None
                     
+                join_match = re.search(r'^\s*(?:(INNER|LEFT|RIGHT)\s+)?JOIN\s+(\w+)\s+ON\s+(.*?)(?=\s+(WHERE|GROUP BY|ORDER BY|LIMIT|OFFSET)|$)', remaining, re.IGNORECASE | re.DOTALL)
+                if join_match:
+                    result['join'] = {
+                        'type': (join_match.group(1) or 'INNER').upper(),
+                        'table': join_match.group(2),
+                        'condition': join_match.group(3).strip()
+                    }
+                else:
+                    result['join'] = None
+                    
                 result['where'] = extract_clause('WHERE', ' ' + remaining)
                 
                 result['group_by'] = extract_clause('GROUP BY', ' ' + remaining)

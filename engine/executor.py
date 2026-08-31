@@ -19,6 +19,8 @@ class QueryExecutor:
         
         if query_type == "CREATE":
             return self._execute_create(parsed_query)
+        elif query_type == "CREATE_INDEX":
+            return self._execute_create_index(parsed_query)
         elif query_type == "SELECT":
             return self._execute_select(parsed_query, txn_id)
         elif query_type == "INSERT":
@@ -55,6 +57,18 @@ class QueryExecutor:
         
         self.storage.create_table(table_name, columns, primary_key)
         return {'message': f'Table {table_name} created successfully'}
+        
+    def _execute_create_index(self, parsed_query: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute CREATE INDEX query"""
+        table_name = parsed_query['table_name']
+        column = parsed_query['column']
+        index_name = parsed_query['index_name']
+        
+        try:
+            self.storage.create_index(table_name, column)
+            return {'message': f'Index {index_name} created successfully on {table_name}({column})'}
+        except Exception as e:
+            raise ValueError(f"Error creating index: {str(e)}")
     def _execute_drop(self, parsed_query: Dict[str, Any]) -> Dict[str, Any]:
         """Execute DROP TABLE query"""
         table_name = parsed_query['table_name']
@@ -80,10 +94,10 @@ class QueryExecutor:
         table_info = self.storage.tables[table_name]
         table_columns = table_info.get('columns', [])
         
-        # Get visible records based on MVCC
-        records = self.mvcc.get_visible_records(table_name, txn_id)
+        # Get records, optimizing with index if possible
+        records = self._get_optimized_records(table_name, txn_id, where_clause)
         
-        # Apply WHERE clause filtering
+        # Apply WHERE clause filtering for conditions not covered by index
         if where_clause:
             records = self._apply_where_clause(records, where_clause)
         
@@ -158,7 +172,7 @@ class QueryExecutor:
         table_info = self.storage.tables[table_name]
         primary_key = table_info.get('primary_key')
         
-        records = self.mvcc.get_visible_records(table_name, txn_id)
+        records = self._get_optimized_records(table_name, txn_id, where_clause)
         
         if where_clause:
             records = self._apply_where_clause(records, where_clause)
@@ -210,7 +224,7 @@ class QueryExecutor:
         table_name = parsed_query['table_name']
         where_clause = parsed_query.get('where')
         
-        records = self.mvcc.get_visible_records(table_name, txn_id)
+        records = self._get_optimized_records(table_name, txn_id, where_clause)
         
         if where_clause:
             records = self._apply_where_clause(records, where_clause)
@@ -224,6 +238,60 @@ class QueryExecutor:
         
         return {'message': f'{deleted_count} record(s) deleted', 'affected_rows': deleted_count}
     
+    def _get_optimized_records(self, table_name: str, txn_id: int, where_clause: str) -> List[Dict]:
+        """Fetch records, using B-Tree index if applicable for basic equality filters."""
+        if not where_clause:
+            return self.mvcc.get_visible_records(table_name, txn_id)
+            
+        # Basic parsing to see if we can use an index
+        if ' AND ' not in where_clause.upper() and ' OR ' not in where_clause.upper():
+            if '=' in where_clause and '!=' not in where_clause and '>=' not in where_clause and '<=' not in where_clause:
+                parts = where_clause.split('=')
+                if len(parts) == 2:
+                    col = parts[0].strip()
+                    val = parts[1].strip().strip("'")
+                    
+                    if table_name in self.storage.indexes and col in self.storage.indexes[table_name]:
+                        print(f"[DEBUG] Using BTree index for {table_name}.{col}={val}")
+                        btree = self.storage.indexes[table_name][col]
+                        
+                        try:
+                            val_typed = float(val) if '.' in val else int(val)
+                        except:
+                            val_typed = val
+                            
+                        record_ids = btree.search(val_typed)
+                        if not record_ids:
+                            record_ids = btree.search(str(val))
+                            
+                        if record_ids is not None:
+                            raw_records = []
+                            for rid in record_ids:
+                                rec = self.storage.get_record(table_name, rid)
+                                if rec:
+                                    raw_records.append(rec)
+                                    
+                            # Check visibility
+                            txn = self.mvcc.transactions.get(txn_id) if txn_id else None
+                            # Use string comparison if IsolationLevel enum isn't directly comparable
+                            iso_str = str(txn['isolation_level']) if txn else "READ_COMMITTED"
+                            
+                            if "REPEATABLE_READ" in iso_str or "SERIALIZABLE" in iso_str:
+                                # Safe fallback for snapshot isolation
+                                return self.mvcc.get_visible_records(table_name, txn_id)
+                                
+                            visible_records = []
+                            for rec in raw_records:
+                                if "READ_UNCOMMITTED" in iso_str:
+                                    if rec.get('_mvcc_deleted_txn') != txn_id:
+                                        visible_records.append(rec)
+                                else:
+                                    if self.mvcc._is_record_visible(rec, txn_id):
+                                        visible_records.append(rec)
+                            return visible_records
+                            
+        return self.mvcc.get_visible_records(table_name, txn_id)
+
     def _apply_where_clause(self, records: List[Dict], where_clause: str) -> List[Dict]:
         """Apply WHERE clause filtering to records"""
         if not where_clause:

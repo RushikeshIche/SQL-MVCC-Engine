@@ -7,6 +7,7 @@ import json
 import pickle
 from typing import Dict, Any, List
 from datetime import datetime
+from .btree import BTree
 
 class StorageEngine:
     """Simple storage engine for table data"""
@@ -15,6 +16,7 @@ class StorageEngine:
         self.data_dir = data_dir
         self.tables = {}
         self.next_ids = {}
+        self.indexes = {}
         
         # Create data directory if it doesn't exist
         os.makedirs(data_dir, exist_ok=True)
@@ -31,10 +33,12 @@ class StorageEngine:
                     data = pickle.load(f)
                     self.tables = data.get('tables', {})
                     self.next_ids = data.get('next_ids', {})
+                    self.indexes = data.get('indexes', {})
         except Exception as e:
             print(f"Warning: Could not load existing data: {e}")
             self.tables = {}
             self.next_ids = {}
+            self.indexes = {}
     
     def _save_data(self):
         """Save table data to disk"""
@@ -43,7 +47,8 @@ class StorageEngine:
             with open(data_file, 'wb') as f:
                 pickle.dump({
                     'tables': self.tables,
-                    'next_ids': self.next_ids
+                    'next_ids': self.next_ids,
+                    'indexes': self.indexes
                 }, f)
         except Exception as e:
             print(f"Error saving data: {e}")
@@ -64,6 +69,34 @@ class StorageEngine:
             'created_at': datetime.now().isoformat()
         }
         self.next_ids[table_name] = 0
+        self.indexes[table_name] = {}
+        
+        if primary_key:
+            self.create_index(table_name, primary_key)
+            
+        self._save_data()
+        
+    def create_index(self, table_name: str, column: str):
+        """Create a BTree index for a specific column in a table."""
+        if not self.table_exists(table_name):
+            raise ValueError(f"Table {table_name} does not exist")
+            
+        if column not in self.tables[table_name]['columns']:
+            raise ValueError(f"Column {column} does not exist in table {table_name}")
+            
+        if table_name not in self.indexes:
+            self.indexes[table_name] = {}
+            
+        if column in self.indexes[table_name]:
+            return # Index already exists
+            
+        btree = BTree()
+        # Populate with existing data
+        for record_id, record in self.tables[table_name]['records'].items():
+            if column in record and record.get('_mvcc_deleted_txn') is None:
+                btree.insert(record[column], record_id)
+                
+        self.indexes[table_name][column] = btree
         self._save_data()
     
     def get_table_names(self) -> List[str]:
@@ -138,6 +171,13 @@ class StorageEngine:
         record_id = int(record_id)
 
         self.tables[table_name]['records'][record_id] = record.copy()
+        
+        # Update indexes
+        if table_name in self.indexes:
+            for col, btree in self.indexes[table_name].items():
+                if col in record:
+                    btree.insert(record[col], record_id)
+                    
         self._save_data()
 
 
@@ -166,6 +206,13 @@ class StorageEngine:
         
         # Merge the updates into the existing record
         existing_record = records[record_id]
+        
+        # Remove old values from indexes
+        if table_name in self.indexes:
+            for col, btree in self.indexes[table_name].items():
+                if col in existing_record and col in updates:
+                    btree.delete(existing_record[col], record_id)
+                    
         existing_record.update(updates)
 
         # Primary key constraint check
@@ -177,6 +224,13 @@ class StorageEngine:
                     raise ValueError(f"Primary key constraint violation: value '{pk_value}' already exists for column '{primary_key}'")
 
         records[record_id] = existing_record.copy() # Ensure a new copy is stored
+        
+        # Add new values to indexes
+        if table_name in self.indexes:
+            for col, btree in self.indexes[table_name].items():
+                if col in updates:
+                    btree.insert(existing_record[col], record_id)
+                    
         self._save_data()
     
     def delete_record(self, table_name: str, record_id: int):
@@ -185,6 +239,13 @@ class StorageEngine:
             raise ValueError(f"Table {table_name} does not exist")
         
         if record_id in self.tables[table_name]['records']:
+            record = self.tables[table_name]['records'][record_id]
+            # Remove from indexes
+            if table_name in self.indexes:
+                for col, btree in self.indexes[table_name].items():
+                    if col in record:
+                        btree.delete(record[col], record_id)
+                        
             del self.tables[table_name]['records'][record_id]
             self._save_data()
 
@@ -197,6 +258,8 @@ class StorageEngine:
         del self.tables[table_name]
         if table_name in self.next_ids:
             del self.next_ids[table_name]
+        if table_name in self.indexes:
+            del self.indexes[table_name]
         
         self._save_data()
         return True

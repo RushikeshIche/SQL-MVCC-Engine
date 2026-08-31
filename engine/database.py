@@ -79,6 +79,7 @@ class Database:
                 'name': table_name,
                 'columns': table_info['columns'],
                 'primary_key': table_info.get('primary_key'),
+                'indexes': list(self.storage.indexes.get(table_name, {}).keys()),
                 'record_count': len(table_info['records']),
                 'created_at': table_info['created_at']
             })

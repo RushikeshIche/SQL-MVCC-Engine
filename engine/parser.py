@@ -8,6 +8,7 @@ from enum import Enum
 
 class QueryType(Enum):
     CREATE = "CREATE"
+    CREATE_INDEX = "CREATE_INDEX"
     SELECT = "SELECT" 
     INSERT = "INSERT"
     UPDATE = "UPDATE"
@@ -24,6 +25,7 @@ class SQLParser:
     def __init__(self):
         self.patterns = {
             QueryType.CREATE: re.compile(r'CREATE TABLE (\w+)\s*\((.*)\)', re.IGNORECASE),
+            QueryType.CREATE_INDEX: re.compile(r'CREATE INDEX (\w+) ON (\w+)\s*\((.*?)\)', re.IGNORECASE),
             QueryType.SELECT: re.compile(r'SELECT (.*?) FROM (\w+)(?:\s+WHERE\s+(.*))?', re.IGNORECASE),
             QueryType.INSERT: re.compile(r'INSERT INTO (\w+)\s*\((.*?)\)\s*VALUES\s*\((.*)\)', re.IGNORECASE),
             QueryType.UPDATE: re.compile(r'UPDATE (\w+)\s+SET\s+(.*?)(?:\s+WHERE\s+(.*))?', re.IGNORECASE),
@@ -80,6 +82,14 @@ class SQLParser:
                 columns = [c for c in columns if c]
 
                 return {**base_result, 'table_name': table_name, 'columns': columns, 'primary_key': primary_key}
+            elif query_type == QueryType.CREATE_INDEX:
+                index_name, table_name, column_name = match.groups()
+                return {
+                    **base_result,
+                    'index_name': index_name.strip(),
+                    'table_name': table_name.strip(),
+                    'column': column_name.strip()
+                }
             elif query_type == QueryType.DROP:
                 table_name = match.groups()[0]
                 return {**base_result, 'table_name': table_name}

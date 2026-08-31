@@ -130,6 +130,8 @@ class SQLParser:
                     
                 result['where'] = extract_clause('WHERE', ' ' + remaining)
                 
+                result['group_by'] = extract_clause('GROUP BY', ' ' + remaining)
+                
                 order_by_clause = extract_clause('ORDER BY', ' ' + remaining)
                 if order_by_clause:
                     parts = order_by_clause.split()

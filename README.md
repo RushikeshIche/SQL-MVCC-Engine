@@ -43,9 +43,6 @@ cd sql_mvcc_engine
 # Run setup script
 python setup.py
 
-# Start the application
-streamlit run ui/enhanced_app.py
-
 ```
 ## 📁 Project Structure
 

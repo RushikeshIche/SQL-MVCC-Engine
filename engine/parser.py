@@ -26,7 +26,7 @@ class SQLParser:
         self.patterns = {
             QueryType.CREATE: re.compile(r'CREATE TABLE (\w+)\s*\((.*)\)', re.IGNORECASE),
             QueryType.CREATE_INDEX: re.compile(r'CREATE INDEX (\w+) ON (\w+)\s*\((.*?)\)', re.IGNORECASE),
-            QueryType.SELECT: re.compile(r'SELECT (.*?) FROM (\w+)(?:\s+WHERE\s+(.*))?', re.IGNORECASE),
+            QueryType.SELECT: re.compile(r'^SELECT\s+(.*)', re.IGNORECASE | re.DOTALL),
             QueryType.INSERT: re.compile(r'INSERT INTO (\w+)\s*\((.*?)\)\s*VALUES\s*\((.*)\)', re.IGNORECASE),
             QueryType.UPDATE: re.compile(r'UPDATE (\w+)\s+SET\s+(.*?)(?:\s+WHERE\s+(.*))?', re.IGNORECASE),
             QueryType.DELETE: re.compile(r'DELETE FROM (\w+)(?:\s+WHERE\s+(.*))?', re.IGNORECASE),
@@ -95,14 +95,59 @@ class SQLParser:
                 return {**base_result, 'table_name': table_name}
             
             elif query_type == QueryType.SELECT:
-                columns_str, table_name, where_clause = match.groups()
-                columns = [col.strip() for col in columns_str.split(',')]
-                return {
+                rest = match.group(1)
+                
+                parts = re.split(r'\s+FROM\s+', rest, maxsplit=1, flags=re.IGNORECASE)
+                if len(parts) != 2:
+                    raise ValueError("Invalid SELECT query: missing FROM clause")
+                
+                columns_str = parts[0].strip()
+                rest_from = parts[1].strip()
+                
+                result = {
                     **base_result,
-                    'table_name': table_name,
-                    'columns': columns,
-                    'where': where_clause.strip() if where_clause else None
+                    'columns': [col.strip() for col in columns_str.split(',')],
+                    'where': None,
+                    'order_by': None,
+                    'order_direction': 'ASC',
+                    'limit': None,
+                    'offset': None
                 }
+                
+                table_match = re.match(r'^(\w+)', rest_from)
+                if not table_match:
+                    raise ValueError("Invalid SELECT query: missing table name")
+                result['table_name'] = table_match.group(1)
+                
+                remaining = rest_from[table_match.end():].strip()
+                
+                def extract_clause(keyword, text):
+                    pattern = r'\s+' + keyword + r'\s+(.*?)(?=\s+(WHERE|GROUP BY|ORDER BY|LIMIT|OFFSET)|$)'
+                    m = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+                    if m:
+                        return m.group(1).strip()
+                    return None
+                    
+                result['where'] = extract_clause('WHERE', ' ' + remaining)
+                
+                order_by_clause = extract_clause('ORDER BY', ' ' + remaining)
+                if order_by_clause:
+                    parts = order_by_clause.split()
+                    if len(parts) > 1 and parts[-1].upper() in ['ASC', 'DESC']:
+                        result['order_direction'] = parts[-1].upper()
+                        result['order_by'] = ' '.join(parts[:-1]).strip()
+                    else:
+                        result['order_by'] = order_by_clause
+                        
+                limit_clause = extract_clause('LIMIT', ' ' + remaining)
+                if limit_clause:
+                    result['limit'] = int(limit_clause)
+                    
+                offset_clause = extract_clause('OFFSET', ' ' + remaining)
+                if offset_clause:
+                    result['offset'] = int(offset_clause)
+                
+                return result
             
             elif query_type == QueryType.INSERT:
                 table_name, columns_str, values_str = match.groups()

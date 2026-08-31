@@ -100,6 +100,33 @@ class QueryExecutor:
         # Apply WHERE clause filtering for conditions not covered by index
         if where_clause:
             records = self._apply_where_clause(records, where_clause)
+            
+        # Apply ORDER BY
+        order_by = parsed_query.get('order_by')
+        if order_by:
+            direction = parsed_query.get('order_direction', 'ASC')
+            reverse = direction.upper() == 'DESC'
+            
+            def sort_key(record):
+                val = record.get(order_by)
+                if val is None:
+                    return (0, "")
+                try:
+                    return (1, float(val))
+                except (ValueError, TypeError):
+                    return (2, str(val))
+                    
+            records.sort(key=sort_key, reverse=reverse)
+            
+        # Apply OFFSET
+        offset = parsed_query.get('offset')
+        if offset is not None:
+            records = records[offset:]
+            
+        # Apply LIMIT
+        limit = parsed_query.get('limit')
+        if limit is not None:
+            records = records[:limit]
         
         # Select specific columns
         if columns[0] == '*':

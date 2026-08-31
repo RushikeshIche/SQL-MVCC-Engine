@@ -97,9 +97,47 @@ class QueryExecutor:
         # Get records, optimizing with index if possible
         records = self._get_optimized_records(table_name, txn_id, where_clause)
         
+        # Apply JOIN
+        join_info = parsed_query.get('join')
+        if join_info:
+            records = self._apply_join(records, table_name, join_info, txn_id)
+        
         # Apply WHERE clause filtering for conditions not covered by index
         if where_clause:
             records = self._apply_where_clause(records, where_clause)
+            
+        # Apply Aggregations (GROUP BY, COUNT, SUM, etc.)
+        group_by = parsed_query.get('group_by')
+        has_agg = any('(' in col and ')' in col for col in columns)
+        if group_by or has_agg:
+            records = self._apply_aggregations(records, columns, group_by)
+            
+        # Apply ORDER BY
+        order_by = parsed_query.get('order_by')
+        if order_by:
+            direction = parsed_query.get('order_direction', 'ASC')
+            reverse = direction.upper() == 'DESC'
+            
+            def sort_key(record):
+                val = record.get(order_by)
+                if val is None:
+                    return (0, "")
+                try:
+                    return (1, float(val))
+                except (ValueError, TypeError):
+                    return (2, str(val))
+                    
+            records.sort(key=sort_key, reverse=reverse)
+            
+        # Apply OFFSET
+        offset = parsed_query.get('offset')
+        if offset is not None:
+            records = records[offset:]
+            
+        # Apply LIMIT
+        limit = parsed_query.get('limit')
+        if limit is not None:
+            records = records[:limit]
         
         # Select specific columns
         if columns[0] == '*':
@@ -344,3 +382,148 @@ class QueryExecutor:
         # Single condition
         else:
             return [record for record in records if evaluate_condition(record, where_clause)]
+            
+    def _apply_aggregations(self, records: List[Dict], columns: List[str], group_by: str) -> List[Dict]:
+        """Apply GROUP BY and aggregate functions"""
+        buckets = {}
+        if group_by:
+            for rec in records:
+                key = rec.get(group_by)
+                if key not in buckets:
+                    buckets[key] = []
+                buckets[key].append(rec)
+        else:
+            buckets['__all__'] = records
+            
+        result = []
+        for key, group in buckets.items():
+            agg_row = {}
+            if group_by:
+                agg_row[group_by] = key
+                
+            for col in columns:
+                if col == group_by or col == '*':
+                    continue
+                if '(' in col and ')' in col:
+                    func_name = col[:col.index('(')].strip().upper()
+                    arg = col[col.index('(')+1:col.index(')')].strip()
+                    
+                    if func_name == 'COUNT':
+                        agg_row[col] = len(group)
+                    elif func_name == 'SUM':
+                        try:
+                            agg_row[col] = sum([float(r.get(arg, 0)) for r in group if r.get(arg) is not None])
+                        except ValueError:
+                            agg_row[col] = 0
+                    elif func_name == 'AVG':
+                        try:
+                            vals = [float(r.get(arg, 0)) for r in group if r.get(arg) is not None]
+                            agg_row[col] = sum(vals) / len(vals) if vals else 0
+                        except ValueError:
+                            agg_row[col] = 0
+                    elif func_name == 'MIN':
+                        try:
+                            vals = [float(r.get(arg, 0)) for r in group if r.get(arg) is not None]
+                            agg_row[col] = min(vals) if vals else None
+                        except ValueError:
+                            agg_row[col] = None
+                    elif func_name == 'MAX':
+                        try:
+                            vals = [float(r.get(arg, 0)) for r in group if r.get(arg) is not None]
+                            agg_row[col] = max(vals) if vals else None
+                        except ValueError:
+                            agg_row[col] = None
+                    else:
+                        agg_row[col] = None 
+                else:
+                    if group:
+                        agg_row[col] = group[0].get(col)
+                        
+            result.append(agg_row)
+            
+        return result
+
+    def _apply_join(self, left_records: List[Dict], left_table: str, join_info: Dict[str, Any], txn_id: int) -> List[Dict]:
+        """Apply INNER, LEFT, or RIGHT JOIN"""
+        right_table = join_info['table']
+        join_type = join_info['type']
+        condition = join_info['condition']
+        
+        if not self.storage.table_exists(right_table):
+            raise ValueError(f"Join table {right_table} does not exist")
+            
+        right_records = self.mvcc.get_visible_records(right_table, txn_id)
+        
+        if join_type == 'RIGHT':
+            flip_join_info = {'type': 'LEFT', 'table': left_table, 'condition': condition}
+            return self._apply_join(right_records, right_table, flip_join_info, txn_id)
+        
+        parts = [p.strip() for p in condition.split('=')]
+        if len(parts) != 2:
+            raise ValueError(f"Unsupported join condition: {condition}")
+            
+        left_col_full, right_col_full = parts[0], parts[1]
+        
+        def get_col_name(full_name, expected_table):
+            if '.' in full_name:
+                t, c = full_name.split('.')
+                if t == expected_table:
+                    return c
+            return full_name 
+            
+        left_col = get_col_name(left_col_full, left_table)
+        if left_col == left_col_full: 
+            left_col = get_col_name(right_col_full, left_table)
+            right_col = get_col_name(left_col_full, right_table)
+        else:
+            right_col = get_col_name(right_col_full, right_table)
+            
+        right_hash = {}
+        for r in right_records:
+            val = r.get(right_col)
+            if val is not None:
+                if val not in right_hash:
+                    right_hash[val] = []
+                right_hash[val].append(r)
+                
+        joined_records = []
+        for l in left_records:
+            val = l.get(left_col)
+            try:
+                val = float(val) if '.' in str(val) else int(val)
+            except:
+                pass
+                
+            matched_rights = []
+            for k, v in right_hash.items():
+                k_val = k
+                try:
+                    k_val = float(k) if '.' in str(k) else int(k)
+                except:
+                    pass
+                if str(k_val) == str(val):
+                    matched_rights.extend(v)
+                    
+            if matched_rights:
+                for r in matched_rights:
+                    combined = {}
+                    for k, v in l.items():
+                        combined[f"{left_table}.{k}"] = v
+                        combined[k] = v 
+                    for k, v in r.items():
+                        combined[f"{right_table}.{k}"] = v
+                        if k not in combined:
+                            combined[k] = v
+                    joined_records.append(combined)
+            elif join_type == 'LEFT':
+                combined = {}
+                for k, v in l.items():
+                    combined[f"{left_table}.{k}"] = v
+                    combined[k] = v
+                for k in self.storage.tables[right_table]['columns']:
+                    combined[f"{right_table}.{k}"] = None
+                    if k not in combined:
+                        combined[k] = None
+                joined_records.append(combined)
+                
+        return joined_records
